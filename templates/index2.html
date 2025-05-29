@@ -700,7 +700,7 @@
                                 <td>
                                     <button class="button-preview" onclick="previewFile('${file.name}')">Preview</button>
                                     <button class="button-download" onclick="downloadFile('${file.name}')">Download</button>
-                                    ${file.name.endsWith('.json') ? `<a href="/analyze/${file.name}" target="_blank"><button class="button-analyze">Analyze</button></a>` : ''}
+                                    ${file.name.endsWith('.json') ? `<a href="/analyze/${file.name}"><button class="button-analyze">Analyze</button></a>` : ''}
                                 </td>
                             </tr>`;
                         }
