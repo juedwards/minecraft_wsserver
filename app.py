@@ -9,24 +9,12 @@ import sys
 import time
 from pathlib import Path
 import socket
-import psutil  # Add this to requirements.txt
-
-# ========================================================================
-# WEB FRONTEND FOR MINECRAFT DATA CAPTURE SERVER
-# ========================================================================
-# This web server provides:
-# 1. Start/Stop control for the Minecraft capture server
-# 2. Live status monitoring
-# 3. File browser for /data/ folder
-# 4. Download functionality for captured data
-# ========================================================================
+import psutil
+import shutil
 
 app = Flask(__name__)
 
 class ServerManager:
-    """
-    Manages the Minecraft data capture server process
-    """
     def __init__(self):
         self.process = None
         self.is_running = False
@@ -35,12 +23,22 @@ class ServerManager:
         self.max_output_lines = 100
         self.server_ip = self.get_server_ip()
         
+        # Use the simple version
+        self.server_script = "minecraft_data_capture_server_simple.py"
+        
         # Ensure data folder exists
-        self.data_folder = "data"  # Use relative path for easier access
+        self.data_folder = "data"
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
         
-        # Check for zombie processes on startup
+        # Check script exists
+        if not os.path.exists(self.server_script):
+            print(f"Warning: {self.server_script} not found!")
+            # Try the original name
+            if os.path.exists("minecraft_data_capture_server.py"):
+                self.server_script = "minecraft_data_capture_server.py"
+                print(f"Using {self.server_script} instead")
+        
         self.cleanup_zombie_processes()
     
     def cleanup_zombie_processes(self):
@@ -48,15 +46,14 @@ class ServerManager:
         try:
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
-                    # Check if it's a Python process running our capture server
                     if proc.info['name'] and 'python' in proc.info['name'].lower():
                         cmdline = proc.info.get('cmdline', [])
-                        if cmdline and any('minecraft_data_capture_server.py' in arg for arg in cmdline):
+                        if cmdline and any('minecraft_data_capture_server' in arg for arg in cmdline):
                             print(f"Found zombie capture server process (PID: {proc.info['pid']}), terminating...")
                             proc.terminate()
-                            time.sleep(1)  # Give it time to terminate
+                            time.sleep(1)
                             if proc.is_running():
-                                proc.kill()  # Force kill if still running
+                                proc.kill()
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
         except Exception as e:
@@ -65,15 +62,12 @@ class ServerManager:
     def get_server_ip(self):
         """Get the external IP address of the server"""
         try:
-            # Create a socket connection to determine the local IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # Connect to a public DNS server (doesn't actually send data)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
             return ip
         except Exception:
-            # Fallback to localhost if we can't determine IP
             return "localhost"
     
     def check_process_alive(self):
@@ -81,7 +75,6 @@ class ServerManager:
         if self.process:
             poll = self.process.poll()
             if poll is not None:
-                # Process has terminated
                 self.is_running = False
                 self.process = None
                 return False
@@ -90,47 +83,47 @@ class ServerManager:
     
     def start_server(self):
         """Start the Minecraft capture server"""
-        # First check if process is actually alive
         if self.check_process_alive():
             return False, "Server is already running"
         
-        # Reset state if process is dead
         self.is_running = False
         self.process = None
         
-        # Clean up any zombie processes
         self.cleanup_zombie_processes()
         
         try:
-            # Start the capture server as a subprocess
+            # Use CREATE_NEW_CONSOLE on Windows to avoid output issues
+            creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            
+            # Start the capture server
             self.process = subprocess.Popen(
-                [sys.executable, 'minecraft_data_capture_server.py'],
+                [sys.executable, '-u', self.server_script],  # -u for unbuffered output
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=creationflags
             )
             
-            # Wait a moment to ensure it started
-            time.sleep(0.5)
+            # Wait and check
+            time.sleep(1)
             
-            # Check if process started successfully
             if self.process.poll() is not None:
-                # Process died immediately
-                return False, "Server failed to start - check if minecraft_data_capture_server.py exists"
+                output = ""
+                if self.process.stdout:
+                    output = self.process.stdout.read()
+                return False, f"Server failed to start. Output: {output}"
             
             self.is_running = True
             self.start_time = datetime.now()
             self.output_lines = ["Server starting..."]
             
-            # Start thread to capture output
+            # Start output capture thread
             output_thread = threading.Thread(target=self._capture_output)
             output_thread.daemon = True
             output_thread.start()
             
             return True, "Server started successfully"
-        except FileNotFoundError:
-            return False, "minecraft_data_capture_server.py not found in current directory"
         except Exception as e:
             return False, f"Failed to start server: {str(e)}"
     
@@ -143,9 +136,7 @@ class ServerManager:
         
         try:
             if self.process:
-                # Send termination signal
                 self.process.terminate()
-                # Wait for process to end
                 self.process.wait(timeout=5)
                 
             self.is_running = False
@@ -153,7 +144,6 @@ class ServerManager:
             self.output_lines.append("Server stopped")
             return True, "Server stopped successfully"
         except subprocess.TimeoutExpired:
-            # Force kill if it doesn't stop gracefully
             if self.process:
                 self.process.kill()
             self.is_running = False
@@ -166,16 +156,19 @@ class ServerManager:
     
     def _capture_output(self):
         """Capture output from the subprocess"""
-        if self.process:
+        if self.process and self.process.stdout:
             try:
-                for line in iter(self.process.stdout.readline, ''):
+                while True:
+                    line = self.process.stdout.readline()
+                    if not line:
+                        break
+                    
+                    line = line.strip()
                     if line:
-                        self.output_lines.append(line.strip())
-                        # Keep only recent lines
+                        self.output_lines.append(line)
                         if len(self.output_lines) > self.max_output_lines:
                             self.output_lines.pop(0)
                     
-                    # Check if process is still alive
                     if self.process.poll() is not None:
                         self.is_running = False
                         self.output_lines.append("Server process terminated")
@@ -185,16 +178,15 @@ class ServerManager:
     
     def get_status(self):
         """Get current server status"""
-        # Update running status based on actual process state
         self.check_process_alive()
         
         status = {
             'is_running': self.is_running,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'uptime': str(datetime.now() - self.start_time) if self.start_time and self.is_running else None,
-            'output': self.output_lines[-20:],  # Last 20 lines
-            'server_ip': self.server_ip,  # Include server IP in status
-            'minecraft_port': 3000
+            'output': self.output_lines[-20:],
+            'server_ip': self.server_ip,
+            'minecraft_port': 19131
         }
         return status
     
@@ -203,20 +195,48 @@ class ServerManager:
         files = []
         try:
             for file in os.listdir(self.data_folder):
-                if file.endswith('.json'):
+                if file.endswith('.json') or file.endswith('.log'):
                     file_path = os.path.join(self.data_folder, file)
                     stat = os.stat(file_path)
                     files.append({
                         'name': file,
                         'size': self._format_size(stat.st_size),
                         'modified': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                        'size_bytes': stat.st_size
+                        'size_bytes': stat.st_size,
+                        'type': 'log' if file.endswith('.log') else 'data'
                     })
-            # Sort by modified date (newest first)
             files.sort(key=lambda x: x['modified'], reverse=True)
         except Exception as e:
             print(f"Error listing files: {e}")
         return files
+    
+    def clear_all_logs(self):
+        """Clear all log and data files from the data folder"""
+        if self.is_running:
+            return False, "Cannot clear logs while server is running. Please stop the server first."
+        
+        try:
+            deleted_count = 0
+            deleted_size = 0
+            
+            # Get list of files before deletion for reporting
+            files = self.get_data_files()
+            
+            # Delete all JSON and LOG files in the data folder
+            for file in os.listdir(self.data_folder):
+                if file.endswith('.json') or file.endswith('.log'):
+                    file_path = os.path.join(self.data_folder, file)
+                    file_size = os.path.getsize(file_path)
+                    os.remove(file_path)
+                    deleted_count += 1
+                    deleted_size += file_size
+            
+            # Clear server output
+            self.output_lines = []
+            
+            return True, f"Cleared {deleted_count} files ({self._format_size(deleted_size)})"
+        except Exception as e:
+            return False, f"Error clearing logs: {str(e)}"
     
     def _format_size(self, size_bytes):
         """Format file size in human readable format"""
@@ -231,44 +251,41 @@ server_manager = ServerManager()
 
 @app.route('/')
 def index():
-    """Main page"""
     return render_template('index.html')
 
 @app.route('/api/start', methods=['POST'])
 def start_server():
-    """API endpoint to start the server"""
     success, message = server_manager.start_server()
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/stop', methods=['POST'])
 def stop_server():
-    """API endpoint to stop the server"""
     success, message = server_manager.stop_server()
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/restart', methods=['POST'])
 def restart_server():
-    """API endpoint to restart the server"""
-    # First stop
     server_manager.stop_server()
-    time.sleep(1)  # Brief pause
-    # Then start
+    time.sleep(1)
     success, message = server_manager.start_server()
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/status')
 def get_status():
-    """API endpoint to get server status"""
     return jsonify(server_manager.get_status())
 
 @app.route('/api/files')
 def get_files():
-    """API endpoint to get list of data files"""
     return jsonify({'files': server_manager.get_data_files()})
+
+@app.route('/api/clear-logs', methods=['POST'])
+def clear_logs():
+    """API endpoint to clear all logs"""
+    success, message = server_manager.clear_all_logs()
+    return jsonify({'success': success, 'message': message})
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    """Download a specific data file"""
     try:
         return send_from_directory(server_manager.data_folder, filename, as_attachment=True)
     except FileNotFoundError:
@@ -276,24 +293,37 @@ def download_file(filename):
 
 @app.route('/api/file-preview/<filename>')
 def preview_file(filename):
-    """Get a preview of file contents"""
     try:
         file_path = os.path.join(server_manager.data_folder, filename)
+        
+        # Handle log files differently
+        if filename.endswith('.log'):
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+                preview = {
+                    'filename': filename,
+                    'type': 'log',
+                    'total_lines': len(lines),
+                    'preview_lines': lines[-50:] if len(lines) > 50 else lines  # Last 50 lines
+                }
+                return jsonify(preview)
+        
+        # Handle JSON data files
         with open(file_path, 'r') as f:
             data = json.load(f)
-            # Return summary info
             preview = {
                 'filename': filename,
-                'server_start_time': data.get('server_start_time'),
+                'type': 'data',
+                'server_start_time': data.get('server_start'),
                 'total_events': len(data.get('events', [])),
                 'total_players': len(data.get('players', {})),
-                'players': list(data.get('players', {}).keys())
+                'players': list(data.get('players', {}).keys()),
+                'stats': data.get('stats', {})
             }
             return jsonify(preview)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Signal handler for graceful shutdown
 def signal_handler(sig, frame):
     print('\nShutting down web server...')
     if server_manager.is_running:
@@ -303,12 +333,6 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == '__main__':
-    # Ensure the minecraft capture script exists
-    if not os.path.exists('minecraft_data_capture_server.py'):
-        print("Error: minecraft_data_capture_server.py not found!")
-        print("Please ensure the Minecraft capture server script is in the same directory.")
-        sys.exit(1)
-    
     print("=" * 60)
     print("Minecraft Data Capture Web Interface")
     print("=" * 60)
