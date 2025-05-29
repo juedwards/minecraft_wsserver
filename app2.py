@@ -443,6 +443,28 @@ def preview_file(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/analyze/<filename>')
+def analyze_file(filename):
+    try:
+        file_path = os.path.join(server_manager.data_folder, filename)
+        if not filename.endswith('.json'):
+            return "Analysis only available for JSON files.", 400
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        # Example analysis: count events, players, stats, etc.
+        analysis = {
+            'filename': filename,
+            'server_start_time': data.get('server_start'),
+            'total_events': len(data.get('events', [])),
+            'total_players': len(data.get('players', {})),
+            'players': list(data.get('players', {}).keys()),
+            'stats': data.get('stats', {}),
+            # Add more analysis as needed
+        }
+        return render_template('analyze.html', analysis=analysis)
+    except Exception as e:
+        return f"Error analyzing file: {str(e)}", 500
+
 def signal_handler(sig, frame):
     print('\nShutting down web server...')
     if server_manager.is_running:

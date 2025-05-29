@@ -361,10 +361,23 @@
             color: #666;
             margin-top: 5px;
         }
+        
+        .button-preview {
+            background-color: #2196F3; /* Blue */
+            color: white;
+        }
+        .button-download {
+            background-color: #FF9800; /* Orange */
+            color: white;
+        }
+        .button-analyze {
+            background-color: #9C27B0; /* Purple */
+            color: white;
+        }
     </style>
 </head>
 <body>
-    <h1>Minecraft Data Capture Server - Enhanced Control Panel</h1>
+    <h1>Minecraft Education Data Capture - Control Panel</h1>
     
     <div class="container">
         <h2>Server Control</h2>
@@ -677,30 +690,23 @@
                 .then(data => {
                     const fileList = document.getElementById('file-list');
                     const fileCount = document.getElementById('file-count');
-                    
                     if (data.files && data.files.length > 0) {
-                        fileCount.textContent = `(${data.files.length} file${data.files.length > 1 ? 's' : ''})`;
-                        
-                        let html = '';
-                        data.files.forEach(file => {
-                            const badge = file.type === 'log' ? 
-                                '<span class="file-type-badge badge-log">LOG</span>' : 
-                                '<span class="file-type-badge badge-data">DATA</span>';
-                            
-                            html += `
-                                <div class="file-item">
-                                    <div class="file-info">
-                                        <div class="file-name">${file.name} ${badge}</div>
-                                        <div class="file-meta">Size: ${file.size} | Modified: ${file.modified}</div>
-                                    </div>
-                                    <div class="file-actions">
-                                        <button class="preview-button" onclick="previewFile('${file.name}')">Preview</button>
-                                        <button onclick="downloadFile('${file.name}')">Download</button>
-                                    </div>
-                                </div>
-                            `;
-                        });
+                        let html = '<table><tr><th>File</th><th>Size</th><th>Modified</th><th>Actions</th></tr>';
+                        for (const file of data.files) {
+                            html += `<tr>
+                                <td>${file.name}</td>
+                                <td>${file.size}</td>
+                                <td>${file.modified}</td>
+                                <td>
+                                    <button class="button-preview" onclick="previewFile('${file.name}')">Preview</button>
+                                    <button class="button-download" onclick="downloadFile('${file.name}')">Download</button>
+                                    ${file.name.endsWith('.json') ? `<a href="/analyze/${file.name}" target="_blank"><button class="button-analyze">Analyze</button></a>` : ''}
+                                </td>
+                            </tr>`;
+                        }
+                        html += '</table>';
                         fileList.innerHTML = html;
+                        fileCount.textContent = `${data.files.length} files`;
                     } else {
                         fileCount.textContent = '';
                         fileList.innerHTML = '<p>No data files found</p>';
