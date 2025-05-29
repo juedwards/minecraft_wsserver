@@ -11,6 +11,7 @@ from pathlib import Path
 import socket
 import psutil
 import shutil
+import requests
 
 app = Flask(__name__)
 
@@ -22,6 +23,7 @@ class ServerManager:
         self.output_lines = []
         self.max_output_lines = 100
         self.server_ip = self.get_server_ip()
+        self.external_ip = self.get_external_ip()
         
         self.server_script = "minecraft_data_capture_server_with_commands.py"
         
@@ -98,7 +100,7 @@ class ServerManager:
             print(f"Error during cleanup: {e}")
     
     def get_server_ip(self):
-        """Get the external IP address"""
+        """Get the local IP address"""
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
@@ -107,6 +109,37 @@ class ServerManager:
             return ip
         except Exception:
             return "localhost"
+    
+    def get_external_ip(self):
+        """Get the external/public IP address"""
+        try:
+            # Try multiple services in case one is down
+            services = [
+                'https://api.ipify.org?format=json',
+                'https://ipapi.co/json/',
+                'https://ifconfig.me/all.json',
+                'https://ipinfo.io/json'
+            ]
+            
+            for service in services:
+                try:
+                    response = requests.get(service, timeout=5)
+                    data = response.json()
+                    # Different services return IP in different fields
+                    ip = data.get('ip') or data.get('ip_addr') or data.get('origin')
+                    if ip:
+                        print(f"External IP detected: {ip}")
+                        return ip
+                except:
+                    continue
+            
+            # If all services fail, fall back to local IP
+            print("Could not determine external IP, using local IP")
+            return self.server_ip
+            
+        except Exception as e:
+            print(f"Error getting external IP: {e}")
+            return self.server_ip
     
     def send_minecraft_command(self, command):
         """Add command to the pending commands file"""
@@ -251,12 +284,17 @@ class ServerManager:
             except:
                 pass
         
+        # Use external IP if available, otherwise local
+        display_ip = self.external_ip if self.external_ip else self.server_ip
+        
         status = {
             'is_running': self.is_running,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'uptime': str(datetime.now() - self.start_time) if self.start_time and self.is_running else None,
             'output': self.output_lines[-20:],
-            'server_ip': self.server_ip,
+            'server_ip': display_ip,  # Use the external IP for display
+            'local_ip': self.server_ip,  # Keep local IP for reference
+            'external_ip': self.external_ip,  # Include external IP
             'minecraft_port': 19131,
             'commands_pending': commands_pending,
             'command_presets': self.command_presets
@@ -417,8 +455,9 @@ if __name__ == '__main__':
     print("=" * 60)
     print("Minecraft Data Capture Web Interface - Enhanced")
     print("=" * 60)
-    print(f"Server IP: {server_manager.server_ip}")
-    print(f"Starting web server on http://{server_manager.server_ip}:5000")
+    print(f"Local IP: {server_manager.server_ip}")
+    print(f"External IP: {server_manager.external_ip}")
+    print(f"Starting web server on http://0.0.0.0:5000")
     print("Open this URL in your browser to access the interface")
     print("Press Ctrl+C to stop the web server")
     print("=" * 60)

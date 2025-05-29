@@ -190,8 +190,32 @@
             font-family: 'Courier New', monospace;
             font-size: 16px;
             color: #333;
-            text-align: center;
             margin: 10px 0;
+            display: inline-block;
+            position: relative;
+            padding-right: 50px;
+        }
+        
+        .copy-button {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .copy-button:hover {
+            background-color: #1976D2;
+        }
+        
+        .copy-button.copied {
+            background-color: #4CAF50;
         }
         
         .log-preview {
@@ -331,6 +355,12 @@
             background-color: #ffebee;
             color: #c62828;
         }
+        
+        .ip-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -348,9 +378,14 @@
                 Started: <span id="start-time"></span><br>
                 Uptime: <span id="uptime-value"></span>
             </p>
-            <p id="connect-info" style="display: none;">
-                Connect in Minecraft: <span class="minecraft-command" id="minecraft-command"></span>
-            </p>
+            <div id="connect-info" style="display: none;">
+                <p>Connect in Minecraft:</p>
+                <div class="minecraft-command" id="minecraft-command-container">
+                    <span id="minecraft-command"></span>
+                    <button class="copy-button" onclick="copyCommand()">Copy</button>
+                </div>
+                <p class="ip-info" id="ip-info"></p>
+            </div>
         </div>
         
         <div>
@@ -423,6 +458,36 @@
         let statusInterval;
         let fileInterval;
         let commandHistory = [];
+        let currentCommand = '';
+        
+        function copyCommand() {
+            const commandText = document.getElementById('minecraft-command').textContent;
+            navigator.clipboard.writeText(commandText).then(() => {
+                const copyBtn = document.querySelector('.copy-button');
+                copyBtn.textContent = 'Copied!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.textContent = 'Copy';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = commandText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                const copyBtn = document.querySelector('.copy-button');
+                copyBtn.textContent = 'Copied!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.textContent = 'Copy';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            });
+        }
         
         function updateStatus() {
             fetch('/api/status')
@@ -438,6 +503,7 @@
                     const output = document.getElementById('output');
                     const commandContainer = document.getElementById('command-container');
                     const wsStatus = document.getElementById('ws-status');
+                    const ipInfo = document.getElementById('ip-info');
                     
                     if (data.is_running) {
                         indicator.className = 'status-indicator status-running';
@@ -463,8 +529,16 @@
                         }
                         
                         // Show connection info
-                        document.getElementById('minecraft-command').textContent = `/connect ${data.server_ip}:${data.minecraft_port}`;
+                        currentCommand = `/connect ${data.server_ip}:${data.minecraft_port}`;
+                        document.getElementById('minecraft-command').textContent = currentCommand;
                         connectInfo.style.display = 'block';
+                        
+                        // Show IP info if different IPs
+                        if (data.external_ip && data.local_ip && data.external_ip !== data.local_ip) {
+                            ipInfo.textContent = `External IP: ${data.external_ip} | Local IP: ${data.local_ip}`;
+                        } else {
+                            ipInfo.textContent = '';
+                        }
                         
                         // Update output
                         if (data.output && data.output.length > 0) {
@@ -729,6 +803,7 @@
                                     <li>Messages: ${data.stats.messages || 0}</li>
                                     <li>Blocks Placed: ${data.stats.blocks_placed || 0}</li>
                                     <li>Blocks Broken: ${data.stats.blocks_broken || 0}</li>
+                                    <li>Structures Built: ${data.stats.structures_built || 0}</li>
                                 </ul>
                             `;
                         }
