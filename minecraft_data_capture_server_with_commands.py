@@ -29,6 +29,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 DATA_FILE = DATA_DIR / f"MinecraftData_{timestamp}.json"
 LOG_FILE = DATA_DIR / f"server_{timestamp}.log"
 COMMAND_FILE = DATA_DIR / "pending_commands.json"
+STRUCTURES_FILE = Path("structures.json")
 
 # Main data structure
 minecraft_data = {
@@ -41,7 +42,8 @@ minecraft_data = {
         "blocks_placed": 0,
         "blocks_broken": 0,
         "commands_sent": 0,
-        "commands_successful": 0
+        "commands_successful": 0,
+        "structures_built": 0
     }
 }
 
@@ -59,6 +61,19 @@ command_queue = queue.Queue()
 # Track player positions
 player_positions = {}
 
+# Load structures from file
+STRUCTURES = {}
+try:
+    if STRUCTURES_FILE.exists():
+        with open(STRUCTURES_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            STRUCTURES = data.get('structures', {})
+            print(f"Loaded {len(STRUCTURES)} structures from {STRUCTURES_FILE}")
+    else:
+        print(f"Warning: {STRUCTURES_FILE} not found. !build command will not work.")
+except Exception as e:
+    print(f"Error loading structures: {e}")
+
 def log_message(message):
     """Log message to both console and file"""
     # Replace emojis with ASCII for console compatibility
@@ -74,7 +89,8 @@ def log_message(message):
             '📌': '[EVENT]',
             '💾': '[SAVED]',
             '🛑': '[STOP]',
-            '📊': '[STATS]'
+            '📊': '[STATS]',
+            '🏗️': '[BUILD]'
         }
         for emoji, text in replacements.items():
             console_message = console_message.replace(emoji, text)
@@ -236,39 +252,120 @@ def extract_block_info(body):
     
     return block_name, player_x, player_y, player_z
 
+async def build_structure(websocket, structure_name, player_name, base_x, base_y, base_z):
+    """Build a structure at the specified location."""
+    if structure_name not in STRUCTURES:
+        available = ", ".join(STRUCTURES.keys())
+        await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cUnknown structure: {structure_name}\\n§7Available: {available}"}}]}}')
+        return False
+    
+    structure = STRUCTURES[structure_name]
+    blocks = structure.get("blocks", [])
+    
+    await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§eBuilding {structure.get("name", structure_name)}..."}}]}}')
+    
+    # Place blocks
+    blocks_placed = 0
+    for block_data in blocks:
+        dx = block_data.get("dx", 0)
+        dy = block_data.get("dy", 0)
+        dz = block_data.get("dz", 0)
+        block_type = block_data.get("block", "stone")
+        
+        # Handle block states/data
+        if "data" in block_data and isinstance(block_data["data"], dict):
+            # For Bedrock Edition, we need to handle block states differently
+            # For now, just use the base block type
+            # TODO: Convert Java block states to Bedrock format
+            pass
+        
+        x = int(base_x + dx)
+        y = int(base_y + dy)
+        z = int(base_z + dz)
+        
+        await send_command(websocket, f"setblock {x} {y} {z} {block_type}")
+        blocks_placed += 1
+        
+        # Small delay to prevent overwhelming the server
+        if blocks_placed % 10 == 0:
+            await asyncio.sleep(0.1)
+    
+    minecraft_data["stats"]["structures_built"] += 1
+    await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§aBuilt {structure.get("name", structure_name)} ({blocks_placed} blocks)"}}]}}')
+    log_message(f"Built {structure_name} for {player_name} at ({base_x}, {base_y}, {base_z})")
+    return True
+
 async def process_chat_command(websocket, player_name, message):
     """Process chat commands starting with !"""
     parts = message.split()
     command = parts[0].lower()
     
     if command == "!help":
-        await send_command(websocket, 'tellraw @a {"rawtext":[{"text":"§eCommands: !help, !stats, !time, !weather, !gamemode"}]}')
+        help_text = "§eCommands:\\n"
+        help_text += "§7!help - Show this help\\n"
+        help_text += "§7!stats - Show your statistics\\n"
+        help_text += "§7!time <day/night/noon> - Change time\\n"
+        help_text += "§7!weather <clear/rain/thunder> - Change weather\\n"
+        help_text += "§7!gamemode <mode> - Change game mode\\n"
+        help_text += "§7!build <structure> - Build a structure\\n"
+        help_text += "§7!structures - List available structures"
+        await send_command(websocket, f'tellraw @a {{"rawtext":[{{"text":"{help_text}"}}]}}')
     
     elif command == "!stats":
         if player_name in minecraft_data["players"]:
             stats = minecraft_data["players"][player_name]
-            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§bYour Stats:\\n§7Blocks placed: {stats.get("blocks_placed", 0)}\\n§7Blocks broken: {stats.get("blocks_broken", 0)}"}}]}}')
+            stats_text = f"§b{player_name}'s Stats:\\n"
+            stats_text += f"§7Blocks placed: {stats.get('blocks_placed', 0)}\\n"
+            stats_text += f"§7Blocks broken: {stats.get('blocks_broken', 0)}\\n"
+            stats_text += f"§7Messages sent: {stats.get('messages', 0)}"
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"{stats_text}"}}]}}')
     
     elif command == "!time":
         if len(parts) > 1:
             time_val = parts[1]
             await send_command(websocket, f"time set {time_val}")
         else:
-            await send_command(websocket, 'tellraw @a {"rawtext":[{"text":"§cUsage: !time day/night/noon"}]}')
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cUsage: !time day/night/noon"}}]}}')
     
     elif command == "!weather":
         if len(parts) > 1:
             weather = parts[1]
             await send_command(websocket, f"weather {weather}")
         else:
-            await send_command(websocket, 'tellraw @a {"rawtext":[{"text":"§cUsage: !weather clear/rain/thunder"}]}')
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cUsage: !weather clear/rain/thunder"}}]}}')
     
     elif command == "!gamemode":
         if len(parts) > 1:
             mode = parts[1]
             await send_command(websocket, f"gamemode {mode} {player_name}")
         else:
-            await send_command(websocket, 'tellraw @a {"rawtext":[{"text":"§cUsage: !gamemode creative/survival/adventure"}]}')
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cUsage: !gamemode creative/survival/adventure"}}]}}')
+    
+    elif command == "!structures":
+        if STRUCTURES:
+            structures_list = "§eAvailable structures:\\n"
+            for name, data in STRUCTURES.items():
+                structures_list += f"§7{name} - {data.get('description', 'No description')}\\n"
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"{structures_list}"}}]}}')
+        else:
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cNo structures loaded!"}}]}}')
+    
+    elif command == "!build":
+        if len(parts) > 1:
+            structure_name = parts[1].lower()
+            
+            # Get player position
+            if player_name in player_positions:
+                pos = player_positions[player_name]
+                x, y, z = pos['x'], pos['y'], pos['z']
+                
+                # Offset slightly so structure doesn't build on top of player
+                await build_structure(websocket, structure_name, player_name, x + 2, y, z + 2)
+            else:
+                await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cCannot determine your position. Move around first!"}}]}}')
+        else:
+            available = ", ".join(STRUCTURES.keys()) if STRUCTURES else "none"
+            await send_command(websocket, f'tellraw {player_name} {{"rawtext":[{{"text":"§cUsage: !build <structure>\\n§7Available: {available}"}}]}}')
 
 async def handler(websocket):
     """Handle WebSocket connections from Minecraft."""
@@ -328,7 +425,9 @@ async def handler(websocket):
                 
                 if status_code == 0:
                     minecraft_data["stats"]["commands_successful"] += 1
-                    log_message(f"✅ Command successful: {status_message}")
+                    # Don't log every successful block placement
+                    if "setblock" not in status_message.lower():
+                        log_message(f"✅ Command successful: {status_message}")
                 else:
                     log_message(f"❌ Command failed (code {status_code}): {status_message}")
                 continue
@@ -448,15 +547,18 @@ async def main():
     print(f"Port: {port}", flush=True)
     print(f"Data file: {DATA_FILE}", flush=True)
     print(f"Command file: {COMMAND_FILE}", flush=True)
+    print(f"Structures file: {STRUCTURES_FILE}", flush=True)
     print("=" * 60, flush=True)
     print(f"To connect: /connect {local_ip}:{port}", flush=True)
     print("=" * 60, flush=True)
     print("\nIn-Game Commands:", flush=True)
-    print("  !help     - Show commands", flush=True)
-    print("  !stats    - Show your statistics", flush=True)
-    print("  !time     - Change time (day/night/noon)", flush=True)
-    print("  !weather  - Change weather (clear/rain/thunder)", flush=True)
-    print("  !gamemode - Change game mode", flush=True)
+    print("  !help       - Show commands", flush=True)
+    print("  !stats      - Show your statistics", flush=True)
+    print("  !time       - Change time (day/night/noon)", flush=True)
+    print("  !weather    - Change weather (clear/rain/thunder)", flush=True)
+    print("  !gamemode   - Change game mode", flush=True)
+    print("  !build      - Build a structure at your location", flush=True)
+    print("  !structures - List available structures", flush=True)
     print("\nWeb interface can also send commands!", flush=True)
     print("=" * 60, flush=True)
     
@@ -478,6 +580,7 @@ async def main():
         print(f"[STATS] Total events: {minecraft_data['stats']['total_events']}", flush=True)
         print(f"[OUT] Commands sent: {minecraft_data['stats']['commands_sent']}", flush=True)
         print(f"[OK] Commands successful: {minecraft_data['stats']['commands_successful']}", flush=True)
+        print(f"[BUILD] Structures built: {minecraft_data['stats']['structures_built']}", flush=True)
 
 if __name__ == "__main__":
     try:
