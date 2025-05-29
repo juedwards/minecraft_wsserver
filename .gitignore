@@ -1,0 +1,10 @@
+.venv/
+/.venv
+/venv
+/.idea/
+/.vscode/
+/.vscode
+/.DS_Store
+/.pytest_cache/
+/.mypy_cache/
+/data/
