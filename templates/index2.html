@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Data Capture Server - Enhanced</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-running {
+            background-color: #4CAF50;
+        }
+        
+        .status-stopped {
+            background-color: #f44336;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        button:hover {
+            opacity: 0.8;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .stop-button {
+            background-color: #f44336;
+        }
+        
+        .restart-button {
+            background-color: #ff9800;
+        }
+        
+        .clear-button {
+            background-color: #9c27b0;
+        }
+        
+        .command-button {
+            background-color: #2196F3;
+        }
+        
+        .output-container {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .file-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .file-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .file-info {
+            flex-grow: 1;
+        }
+        
+        .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .file-meta {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .file-actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        
+        .preview-button {
+            background-color: #2196F3;
+        }
+        
+        .file-type-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 5px;
+            font-weight: normal;
+        }
+        
+        .badge-data {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .badge-log {
+            background-color: #FF9800;
+            color: white;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 8px;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover,
+        .close:focus {
+            color: black;
+        }
+        
+        .minecraft-command {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            color: #333;
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .log-preview {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        h1, h2 {
+            color: #333;
+        }
+        
+        .file-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .confirm-modal {
+            display: none;
+            position: fixed;
+            z-index: 2;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        
+        .confirm-content {
+            background-color: #fefefe;
+            margin: 20% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .confirm-buttons {
+            margin-top: 20px;
+        }
+        
+        .confirm-buttons button {
+            margin: 0 10px;
+        }
+        
+        /* Command Console Styles */
+        .command-console {
+            margin-top: 20px;
+        }
+        
+        .command-input-group {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        
+        .command-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px 0 0 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .command-send-btn {
+            border-radius: 0 4px 4px 0;
+            margin: 0;
+        }
+        
+        .command-presets {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .preset-button {
+            background-color: #673ab7;
+            padding: 8px 15px;
+            font-size: 14px;
+            text-align: left;
+        }
+        
+        .preset-category {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #666;
+        }
+        
+        .ws-status {
+            display: inline-block;
+            margin-left: 20px;
+            font-size: 14px;
+        }
+        
+        .ws-connected {
+            color: #4CAF50;
+        }
+        
+        .ws-disconnected {
+            color: #f44336;
+        }
+        
+        .command-history {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .command-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        .command-entry.success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .command-entry.error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <h1>Minecraft Data Capture Server - Enhanced Control Panel</h1>
+    
+    <div class="container">
+        <h2>Server Control</h2>
+        <div id="status">
+            <p>
+                <span id="status-indicator" class="status-indicator status-stopped"></span>
+                <span id="status-text">Server is stopped</span>
+                <span id="ws-status" class="ws-status ws-disconnected"></span>
+            </p>
+            <p id="uptime" style="display: none;">
+                Started: <span id="start-time"></span><br>
+                Uptime: <span id="uptime-value"></span>
+            </p>
+            <p id="connect-info" style="display: none;">
+                Connect in Minecraft: <span class="minecraft-command" id="minecraft-command"></span>
+            </p>
+        </div>
+        
+        <div>
+            <button id="start-btn" onclick="startServer()">Start Server</button>
+            <button id="stop-btn" class="stop-button" onclick="stopServer()" disabled>Stop Server</button>
+            <button id="restart-btn" class="restart-button" onclick="restartServer()" disabled>Restart Server</button>
+        </div>
+    </div>
+    
+    <div class="container" id="command-container" style="display: none;">
+        <h2>Command Console</h2>
+        <div class="command-console">
+            <div class="command-input-group">
+                <input type="text" id="command-input" class="command-input" placeholder="Enter Minecraft command (e.g., time set day)" onkeypress="handleCommandKeyPress(event)">
+                <button class="command-button command-send-btn" onclick="sendCommand()">Send Command</button>
+            </div>
+            
+            <div class="preset-category">Quick Commands</div>
+            <div class="command-presets" id="command-presets">
+                <!-- Presets will be loaded here -->
+            </div>
+            
+            <div class="preset-category">Command History</div>
+            <div class="command-history" id="command-history">
+                <div style="color: #666;">No commands sent yet</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>Server Output</h2>
+        <div id="output" class="output-container">Server not running</div>
+    </div>
+    
+    <div class="container">
+        <div class="file-controls">
+            <div>
+                <h2 style="display: inline-block; margin: 0;">Captured Data Files</h2>
+                <span id="file-count" style="margin-left: 10px; color: #666;"></span>
+            </div>
+            <button class="clear-button" onclick="confirmClearLogs()">Clear All Files</button>
+        </div>
+        <div id="file-list" class="file-list">
+            <p>No data files found</p>
+        </div>
+    </div>
+    
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closePreview()">&times;</span>
+            <h3>File Preview</h3>
+            <div id="preview-content"></div>
+        </div>
+    </div>
+    
+    <!-- Confirm Clear Modal -->
+    <div id="confirm-modal" class="confirm-modal">
+        <div class="confirm-content">
+            <h3>Clear All Files?</h3>
+            <p>This will permanently delete all captured data and log files. This action cannot be undone.</p>
+            <div class="confirm-buttons">
+                <button class="stop-button" onclick="clearLogs()">Yes, Clear All</button>
+                <button onclick="closeConfirm()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let statusInterval;
+        let fileInterval;
+        let commandHistory = [];
+        
+        function updateStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const indicator = document.getElementById('status-indicator');
+                    const statusText = document.getElementById('status-text');
+                    const startBtn = document.getElementById('start-btn');
+                    const stopBtn = document.getElementById('stop-btn');
+                    const restartBtn = document.getElementById('restart-btn');
+                    const uptimeDiv = document.getElementById('uptime');
+                    const connectInfo = document.getElementById('connect-info');
+                    const output = document.getElementById('output');
+                    const commandContainer = document.getElementById('command-container');
+                    const wsStatus = document.getElementById('ws-status');
+                    
+                    if (data.is_running) {
+                        indicator.className = 'status-indicator status-running';
+                        statusText.textContent = 'Server is running';
+                        startBtn.disabled = true;
+                        stopBtn.disabled = false;
+                        restartBtn.disabled = false;
+                        commandContainer.style.display = 'block';
+                        
+                        // Update WebSocket status
+                        if (data.ws_connected) {
+                            wsStatus.className = 'ws-status ws-connected';
+                            wsStatus.textContent = '● WebSocket Connected';
+                        } else {
+                            wsStatus.className = 'ws-status ws-disconnected';
+                            wsStatus.textContent = '● WebSocket Disconnected';
+                        }
+                        
+                        if (data.start_time) {
+                            document.getElementById('start-time').textContent = new Date(data.start_time).toLocaleString();
+                            document.getElementById('uptime-value').textContent = data.uptime;
+                            uptimeDiv.style.display = 'block';
+                        }
+                        
+                        // Show connection info
+                        document.getElementById('minecraft-command').textContent = `/connect ${data.server_ip}:${data.minecraft_port}`;
+                        connectInfo.style.display = 'block';
+                        
+                        // Update output
+                        if (data.output && data.output.length > 0) {
+                            output.textContent = data.output.join('\n');
+                            output.scrollTop = output.scrollHeight;
+                        }
+                        
+                        // Load command presets
+                        if (data.command_presets) {
+                            loadCommandPresets(data.command_presets);
+                        }
+                    } else {
+                        indicator.className = 'status-indicator status-stopped';
+                        statusText.textContent = 'Server is stopped';
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                        restartBtn.disabled = true;
+                        uptimeDiv.style.display = 'none';
+                        connectInfo.style.display = 'none';
+                        commandContainer.style.display = 'none';
+                        wsStatus.textContent = '';
+                        
+                        if (!output.textContent || output.textContent === 'Server not running') {
+                            output.textContent = 'Server not running';
+                        }
+                    }
+                });
+        }
+        
+        function loadCommandPresets(presets) {
+            const presetsContainer = document.getElementById('command-presets');
+            presetsContainer.innerHTML = '';
+            
+            // Group presets by category
+            const categories = {
+                time: { name: 'Time & Weather', commands: [] },
+                gamemode: { name: 'Game Modes', commands: [] },
+                give: { name: 'Give Items', commands: [] },
+                effect: { name: 'Effects', commands: [] },
+                summon: { name: 'Summon Mobs', commands: [] },
+                other: { name: 'Other', commands: [] }
+            };
+            
+            for (const [key, command] of Object.entries(presets)) {
+                const button = document.createElement('button');
+                button.className = 'preset-button';
+                button.textContent = key.replace(/_/g, ' ').toUpperCase();
+                button.onclick = () => executePresetCommand(command);
+                
+                // Categorize
+                if (key.startsWith('time_') || key.startsWith('weather_')) {
+                    categories.time.commands.push(button);
+                } else if (key.startsWith('gamemode_')) {
+                    categories.gamemode.commands.push(button);
+                } else if (key.startsWith('give_')) {
+                    categories.give.commands.push(button);
+                } else if (key.startsWith('effect_')) {
+                    categories.effect.commands.push(button);
+                } else if (key.startsWith('summon_')) {
+                    categories.summon.commands.push(button);
+                } else {
+                    categories.other.commands.push(button);
+                }
+            }
+            
+            // Add categorized buttons
+            for (const [catKey, category] of Object.entries(categories)) {
+                if (category.commands.length > 0) {
+                    category.commands.forEach(btn => presetsContainer.appendChild(btn));
+                }
+            }
+        }
+        
+        function executePresetCommand(command) {
+            document.getElementById('command-input').value = command;
+            sendCommand();
+        }
+        
+        function sendCommand() {
+            const input = document.getElementById('command-input');
+            const command = input.value.trim();
+            
+            if (!command) {
+                alert('Please enter a command');
+                return;
+            }
+            
+            fetch('/api/send-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ command: command })
+            })
+            .then(response => response.json())
+            .then(data => {
+                addToCommandHistory(command, data.success, data.message);
+                if (data.success) {
+                    input.value = '';
+                } else {
+                    alert('Command failed: ' + data.message);
+                }
+            });
+        }
+        
+        function handleCommandKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendCommand();
+            }
+        }
+        
+        function addToCommandHistory(command, success, message) {
+            const historyDiv = document.getElementById('command-history');
+            
+            // Clear initial message
+            if (historyDiv.children.length === 1 && historyDiv.children[0].textContent === 'No commands sent yet') {
+                historyDiv.innerHTML = '';
+            }
+            
+            const entry = document.createElement('div');
+            entry.className = `command-entry ${success ? 'success' : 'error'}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${command} - ${message}`;
+            
+            historyDiv.insertBefore(entry, historyDiv.firstChild);
+            
+            // Keep only last 50 commands
+            while (historyDiv.children.length > 50) {
+                historyDiv.removeChild(historyDiv.lastChild);
+            }
+        }
+        
+        function updateFileList() {
+            fetch('/api/files')
+                .then(response => response.json())
+                .then(data => {
+                    const fileList = document.getElementById('file-list');
+                    const fileCount = document.getElementById('file-count');
+                    
+                    if (data.files && data.files.length > 0) {
+                        fileCount.textContent = `(${data.files.length} file${data.files.length > 1 ? 's' : ''})`;
+                        
+                        let html = '';
+                        data.files.forEach(file => {
+                            const badge = file.type === 'log' ? 
+                                '<span class="file-type-badge badge-log">LOG</span>' : 
+                                '<span class="file-type-badge badge-data">DATA</span>';
+                            
+                            html += `
+                                <div class="file-item">
+                                    <div class="file-info">
+                                        <div class="file-name">${file.name} ${badge}</div>
+                                        <div class="file-meta">Size: ${file.size} | Modified: ${file.modified}</div>
+                                    </div>
+                                    <div class="file-actions">
+                                        <button class="preview-button" onclick="previewFile('${file.name}')">Preview</button>
+                                        <button onclick="downloadFile('${file.name}')">Download</button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        fileList.innerHTML = html;
+                    } else {
+                        fileCount.textContent = '';
+                        fileList.innerHTML = '<p>No data files found</p>';
+                    }
+                });
+        }
+        
+        function startServer() {
+            fetch('/api/start', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        alert('Failed to start server: ' + data.message);
+                    }
+                    updateStatus();
+                });
+        }
+        
+        function stopServer() {
+            fetch('/api/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        alert('Failed to stop server: ' + data.message);
+                    }
+                    updateStatus();
+                });
+        }
+        
+        function restartServer() {
+            fetch('/api/restart', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        alert('Failed to restart server: ' + data.message);
+                    }
+                    updateStatus();
+                });
+        }
+        
+        function confirmClearLogs() {
+            document.getElementById('confirm-modal').style.display = 'block';
+        }
+        
+        function closeConfirm() {
+            document.getElementById('confirm-modal').style.display = 'none';
+        }
+        
+        function clearLogs() {
+            closeConfirm();
+            fetch('/api/clear-logs', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        updateFileList();
+                    } else {
+                        alert('Failed to clear logs: ' + data.message);
+                    }
+                });
+        }
+        
+        function downloadFile(filename) {
+            window.location.href = `/download/${filename}`;
+        }
+        
+        function previewFile(filename) {
+            fetch(`/api/file-preview/${filename}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error previewing file: ' + data.error);
+                        return;
+                    }
+                    
+                    const modal = document.getElementById('preview-modal');
+                    const content = document.getElementById('preview-content');
+                    
+                    let html = '';
+                    
+                    if (data.type === 'log') {
+                        html = `
+                            <p><strong>Filename:</strong> ${data.filename}</p>
+                            <p><strong>Total Lines:</strong> ${data.total_lines}</p>
+                            <p><strong>Log Preview (last 50 lines):</strong></p>
+                            <div class="log-preview">${data.preview_lines.join('')}</div>
+                        `;
+                    } else {
+                        html = `
+                            <p><strong>Filename:</strong> ${data.filename}</p>
+                            <p><strong>Server Start Time:</strong> ${data.server_start_time || 'N/A'}</p>
+                            <p><strong>Total Events:</strong> ${data.total_events}</p>
+                            <p><strong>Total Players:</strong> ${data.total_players}</p>
+                        `;
+                        
+                        if (data.stats) {
+                            html += `
+                                <p><strong>Statistics:</strong></p>
+                                <ul>
+                                    <li>Messages: ${data.stats.messages || 0}</li>
+                                    <li>Blocks Placed: ${data.stats.blocks_placed || 0}</li>
+                                    <li>Blocks Broken: ${data.stats.blocks_broken || 0}</li>
+                                </ul>
+                            `;
+                        }
+                        
+                        if (data.players && data.players.length > 0) {
+                            html += `<p><strong>Players:</strong> ${data.players.join(', ')}</p>`;
+                        }
+                    }
+                    
+                    content.innerHTML = html;
+                    modal.style.display = 'block';
+                });
+        }
+        
+        function closePreview() {
+            document.getElementById('preview-modal').style.display = 'none';
+        }
+        
+        // Close modals when clicking outside of them
+        window.onclick = function(event) {
+            const previewModal = document.getElementById('preview-modal');
+            const confirmModal = document.getElementById('confirm-modal');
+            
+            if (event.target == previewModal) {
+                previewModal.style.display = 'none';
+            } else if (event.target == confirmModal) {
+                confirmModal.style.display = 'none';
+            }
+        }
+        
+        // Start updating status and file list
+        updateStatus();
+        updateFileList();
+        statusInterval = setInterval(updateStatus, 1000);
+        fileInterval = setInterval(updateFileList, 5000);
+    </script>
+</body>
+</html>
