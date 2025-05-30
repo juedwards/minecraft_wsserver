@@ -12,6 +12,9 @@ import socket
 import psutil
 import shutil
 import requests
+import plotly.graph_objs as go
+import plotly.io as pio
+
 
 app = Flask(__name__)
 
@@ -442,7 +445,7 @@ def preview_file(filename):
             return jsonify(preview)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+    
 @app.route('/analyze/<filename>')
 def analyze_file(filename):
     try:
@@ -451,7 +454,109 @@ def analyze_file(filename):
             return "Analysis only available for JSON files.", 400
         with open(file_path, 'r') as f:
             data = json.load(f)
-        # Example analysis: count events, players, stats, etc.
+
+        # Build player paths and block events
+        player_paths = {}
+        block_events = []  # List of dicts: {'type': 'placed'/'broken', 'player': ..., 'pos': (x, y, z)}
+        for event in data.get('events', []):
+            player = event.get('player')
+            if not player and event.get('data', {}).get('player'):
+                pd = event['data']['player']
+                player = pd.get('name') or pd.get('PlayerName')
+            if not player and event.get('data', {}).get('sender'):
+                player = event['data']['sender']
+            if not player:
+                continue
+
+            # Extract position
+            pos = None
+            pd = event.get('data', {}).get('player')
+            if pd and isinstance(pd, dict) and 'position' in pd:
+                pos = pd['position']
+            elif event.get('data', {}).get('position'):
+                pos = event['data']['position']
+            if pos:
+                if isinstance(pos, list) and len(pos) == 3:
+                    x, y, z = pos
+                elif isinstance(pos, dict):
+                    x = pos.get('x')
+                    y = pos.get('y')
+                    z = pos.get('z')
+                else:
+                    continue
+                if x is not None and y is not None and z is not None:
+                    player_paths.setdefault(player, []).append((float(x), float(y), float(z)))
+
+                    event_name = event.get('event') or event.get('type') or ""
+                    if event_name == "BlockPlaced":
+                        block_events.append({'type': 'placed', 'player': player, 'pos': (float(x), float(y), float(z))})
+                    elif event_name == "BlockBroken":
+                        block_events.append({'type': 'broken', 'player': player, 'pos': (float(x), float(y), float(z))})
+
+        # Create Plotly traces
+        traces = []
+        colors = [
+            'red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow', 'brown', 'black'
+        ]
+        for idx, (player, points) in enumerate(player_paths.items()):
+            if not points:
+                continue
+            xs, ys, zs = zip(*points)
+            traces.append(go.Scatter3d(
+                x=xs, y=ys, z=zs,
+                mode='lines+markers',
+                name=player,
+                line=dict(color=colors[idx % len(colors)], width=4),
+                marker=dict(size=3),
+            ))
+
+        # BlockPlaced markers
+        placed_x, placed_y, placed_z, placed_players = [], [], [], []
+        broken_x, broken_y, broken_z, broken_players = [], [], [], []
+        for ev in block_events:
+            x, y, z = ev['pos']
+            if ev['type'] == 'placed':
+                placed_x.append(x)
+                placed_y.append(y)
+                placed_z.append(z)
+                placed_players.append(ev['player'])
+            elif ev['type'] == 'broken':
+                broken_x.append(x)
+                broken_y.append(y)
+                broken_z.append(z)
+                broken_players.append(ev['player'])
+        if placed_x:
+            traces.append(go.Scatter3d(
+                x=placed_x, y=placed_y, z=placed_z,
+                mode='markers',
+                name='Block Placed',
+                marker=dict(symbol='diamond', color='red', size=6),
+                text=placed_players,
+                hovertemplate='Block Placed by %{text}<br>(%{x}, %{y}, %{z})'
+            ))
+        if broken_x:
+            traces.append(go.Scatter3d(
+                x=broken_x, y=broken_y, z=broken_z,
+                mode='markers',
+                name='Block Broken',
+                marker=dict(symbol='x', color='blue', size=6),
+                text=broken_players,
+                hovertemplate='Block Broken by %{text}<br>(%{x}, %{y}, %{z})'
+            ))
+
+        layout = go.Layout(
+            title='3D Player Path Trace (with Block Placements/Breaks)',
+            scene=dict(
+                xaxis_title='X', yaxis_title='Y', zaxis_title='Z'
+            ),
+            width=900, height=650,
+            showlegend=True,
+            margin=dict(l=0, r=0, b=0, t=40)
+        )
+
+        fig = go.Figure(data=traces, layout=layout)
+        plot_html = pio.to_html(fig, full_html=False)
+
         analysis = {
             'filename': filename,
             'server_start_time': data.get('server_start'),
@@ -459,7 +564,7 @@ def analyze_file(filename):
             'total_players': len(data.get('players', {})),
             'players': list(data.get('players', {}).keys()),
             'stats': data.get('stats', {}),
-            # Add more analysis as needed
+            'plot_html': plot_html,
         }
         return render_template('analyze.html', analysis=analysis)
     except Exception as e:

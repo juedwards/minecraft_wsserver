@@ -5,93 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analysis - {{ analysis.filename }}</title>
     <style>
-        /* Copy all styles from index2.html here */
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-        button:hover {
-            opacity: 0.8;
-        }
-        .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #2196F3;
-            text-decoration: none;
-            font-size: 16px;
-        }
-        .analysis-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        .analysis-table th, .analysis-table td {
-            border: 1px solid #eee;
-            padding: 10px;
-            text-align: left;
-        }
-        .analysis-table th {
-            background-color: #f5f5f5;
-        }
-        .log-preview, pre {
-            background-color: #f5f5f5;
-            padding: 10px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-        ul {
-            margin: 0;
-            padding-left: 20px;
-        }
+        body { font-family: Arial, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
+        .container { background-color: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1, h2 { color: #333; }
+        button { background-color: #4CAF50; color: white; border: none; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 4px 2px; cursor: pointer; border-radius: 4px; }
+        button:hover { opacity: 0.8; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #2196F3; text-decoration: none; font-size: 16px; }
+        .analysis-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .analysis-table th, .analysis-table td { border: 1px solid #eee; padding: 10px; text-align: left; }
+        .analysis-table th { background-color: #f5f5f5; }
+        .log-preview, pre { background-color: #f5f5f5; padding: 10px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+        ul { margin: 0; padding-left: 20px; }
+        .plotly-container { margin-top: 30px; }
     </style>
+    <!-- Plotly CDN for interactive 3D plots -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
     <div class="container">
         <a href="/" class="back-link">&larr; Back to Dashboard</a>
         <h1>Analysis for {{ analysis.filename }}</h1>
         <table class="analysis-table">
-            <tr>
-                <th>Server Start Time</th>
-                <td>{{ analysis.server_start_time or 'N/A' }}</td>
-            </tr>
-            <tr>
-                <th>Total Events</th>
-                <td>{{ analysis.total_events }}</td>
-            </tr>
-            <tr>
-                <th>Total Players</th>
-                <td>{{ analysis.total_players }}</td>
-            </tr>
+            <tr><th>Server Start Time</th><td>{{ analysis.server_start_time or 'N/A' }}</td></tr>
+            <tr><th>Total Events</th><td>{{ analysis.total_events }}</td></tr>
+            <tr><th>Total Players</th><td>{{ analysis.total_players }}</td></tr>
             <tr>
                 <th>Players</th>
                 <td>
@@ -113,6 +50,10 @@
                 </td>
             </tr>
         </table>
+        <div class="plotly-container">
+            <h2>3D Player Path Trace (Python/Plotly)</h2>
+            {{ analysis.plot_html|safe }}
+        </div>
     </div>
 </body>
 </html>
